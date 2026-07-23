@@ -225,8 +225,12 @@ make test
 make demo
 ```
 
-CI runs Ruff, strict MyPy, tests with a coverage floor, and a basic committed-secret scan on
-Python 3.12 and 3.13.
+The intended CI workflow runs Ruff, strict MyPy, tests with a coverage floor, and a basic
+committed-secret scan on Python 3.12 and 3.13.
+
+The ready-to-install workflow is stored at `config/github-actions-ci.yml.example`. Move it
+to `.github/workflows/ci.yml` using a GitHub credential with `workflow` permission; GitHub
+rejects workflow-path writes from credentials without that separate scope.
 
 ## Roadmap
 
