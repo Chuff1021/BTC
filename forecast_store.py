@@ -113,7 +113,13 @@ def _settle_due(
         (latest_observed_at,),
     ).fetchall()
     settled = 0
-    for prediction_id, target_at, anchor, prediction, low, high in due:
+    for row in due:
+        prediction_id = row["prediction_id"]
+        target_at = row["target_at"]
+        anchor = row["anchor_price"]
+        prediction = row["predicted_price"]
+        low = row["low_price"]
+        high = row["high_price"]
         match = next(
             (
                 (observed_at, price)
@@ -279,6 +285,38 @@ def record_settle_and_score(
         "recent": recent,
         "promotion_policy": "challenger gates plus manual approval",
     }
+
+
+def read_tracking() -> dict[str, Any]:
+    url = database_url()
+    if not url:
+        return {
+            "status": "DATABASE_NOT_CONFIGURED",
+            "open_predictions": 0,
+            "settled_predictions": 0,
+            "settled_now": 0,
+            "scorecards": [],
+            "recent": [],
+        }
+    with psycopg.connect(url, autocommit=True, row_factory=dict_row) as connection:
+        ensure_schema(connection)
+        counts = connection.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'OPEN')::INTEGER AS open_predictions,
+                COUNT(*) FILTER (WHERE status = 'SETTLED')::INTEGER AS settled_predictions
+            FROM forecast_predictions
+            """
+        ).fetchone()
+        return {
+            "status": "LIVE",
+            "open_predictions": counts["open_predictions"],
+            "settled_predictions": counts["settled_predictions"],
+            "settled_now": 0,
+            "scorecards": _scorecards(connection),
+            "recent": _recent(connection),
+            "promotion_policy": "challenger gates plus manual approval",
+        }
 
 
 def migrate() -> None:

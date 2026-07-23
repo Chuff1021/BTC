@@ -18,7 +18,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from forecast_core import HORIZONS, MODEL_VERSION, build_forecasts, classify_regime
-from forecast_store import record_settle_and_score
+from forecast_store import read_tracking, record_settle_and_score
 
 KRAKEN_BASE = "https://api.kraken.com/0/public"
 COINBASE_TICKER = "https://api.exchange.coinbase.com/products/BTC-USD/ticker"
@@ -36,12 +36,36 @@ _cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = asyncio.Lock()
 
 
+class KrakenRateLimitError(RuntimeError):
+    pass
+
+
 async def _json(
     client: httpx.AsyncClient, url: str, *, params: dict[str, Any] | None = None
 ) -> Any:
     response = await client.get(url, params=params)
     response.raise_for_status()
     return response.json()
+
+
+async def _kraken_json(
+    client: httpx.AsyncClient,
+    path: str,
+    *,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    for attempt in range(4):
+        payload = await _json(client, f"{KRAKEN_BASE}/{path}", params=params)
+        errors = payload.get("error") or []
+        if not errors:
+            return payload
+        if any("Too many requests" in str(error) for error in errors):
+            if attempt == 3:
+                break
+            await asyncio.sleep(0.75 * (2**attempt))
+            continue
+        raise ValueError(f"Kraken API error: {', '.join(str(error) for error in errors)}")
+    raise KrakenRateLimitError("Kraken public market-data quota is temporarily exhausted")
 
 
 def _cached(key: str) -> Any | None:
@@ -105,47 +129,44 @@ async def _market_data() -> dict[str, Any]:
         observed_at = datetime.now(UTC)
         headers = {"User-Agent": "btc-alpha-research/0.2 (read-only)"}
         async with httpx.AsyncClient(timeout=20, headers=headers) as client:
-            requests = [
-                _json(
+            coinbase_task = asyncio.create_task(_json(client, COINBASE_TICKER))
+            candle_results: list[dict[str, Any]] = []
+            try:
+                for interval in intervals:
+                    candle_results.append(
+                        await _kraken_json(
+                            client,
+                            "OHLC",
+                            params={
+                                "pair": "XBTUSD",
+                                "interval": interval,
+                                "assetVersion": 1,
+                            },
+                        )
+                    )
+                    await asyncio.sleep(0.2)
+                ticker_result = await _kraken_json(
                     client,
-                    f"{KRAKEN_BASE}/OHLC",
-                    params={"pair": "XBTUSD", "interval": interval, "assetVersion": 1},
+                    "Ticker",
+                    params={"pair": "XBTUSD", "assetVersion": 1},
                 )
-                for interval in intervals
-            ]
-            ticker_request = _json(
-                client,
-                f"{KRAKEN_BASE}/Ticker",
-                params={"pair": "XBTUSD", "assetVersion": 1},
-            )
-            coinbase_request = _json(client, COINBASE_TICKER)
-            results = await asyncio.gather(
-                *requests,
-                ticker_request,
-                coinbase_request,
-                return_exceptions=True,
-            )
-        candle_results = results[: len(intervals)]
-        ticker_result = results[len(intervals)]
-        coinbase_result = results[len(intervals) + 1]
-        if isinstance(ticker_result, Exception):
-            raise HTTPException(
-                status_code=503, detail=f"Primary BTC feed unavailable: {ticker_result}"
-            )
-        candles_by_interval: dict[int, list[dict[str, Any]]] = {}
-        for interval, result in zip(intervals, candle_results, strict=True):
-            if isinstance(result, Exception):
+            except (httpx.HTTPError, ValueError, KrakenRateLimitError) as error:
+                coinbase_task.cancel()
                 raise HTTPException(
                     status_code=503,
-                    detail=f"Kraken {interval}m candle feed unavailable: {result}",
-                )
+                    detail=f"Primary BTC feed unavailable: {error}",
+                ) from error
+            coinbase_result = (await asyncio.gather(coinbase_task, return_exceptions=True))[0]
+        candles_by_interval: dict[int, list[dict[str, Any]]] = {}
+        for interval, result in zip(intervals, candle_results, strict=True):
             candles_by_interval[interval] = _normalize_candles(_kraken_result(result))
         ticker = _kraken_result(ticker_result)
-        kraken_price = float(ticker["c"][0])
+        last_trade = float(ticker["c"][0])
         bid = float(ticker["b"][0])
         ask = float(ticker["a"][0])
-        if not (0 < bid <= kraken_price <= ask * 1.01):
+        if not (0 < bid <= ask) or (ask / bid - 1) * 10_000 > 100:
             raise HTTPException(status_code=503, detail="Primary BTC quote failed validation")
+        kraken_price = (bid + ask) / 2
         coinbase_price: float | None = None
         coinbase_timestamp: str | None = None
         cross_venue_bps: float | None = None
@@ -168,6 +189,7 @@ async def _market_data() -> dict[str, Any]:
             "observed_at": observed_at.isoformat(),
             "instrument": "BTC/USD",
             "price": round(kraken_price, 2),
+            "last_trade": round(last_trade, 2),
             "bid": round(bid, 2),
             "ask": round(ask, 2),
             "spread_bps": (ask / bid - 1) * 10_000,
@@ -419,8 +441,13 @@ async def run() -> dict[str, Any]:
 
 @app.get("/api/tracking")
 async def tracking() -> dict[str, Any]:
-    snapshot = await _terminal(60)
-    return snapshot["tracking"]
+    try:
+        return await asyncio.to_thread(read_tracking)
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Forecast tracking unavailable: {type(error).__name__}",
+        ) from error
 
 
 @app.get("/api/cron/forecasts")
