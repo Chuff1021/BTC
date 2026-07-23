@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>BTC Alpha // Intelligence Workstation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #05080c;
+      --base: #080e14;
+      --panel: #0b131b;
+      --raised: #101b25;
+      --line: #253747;
+      --soft: #172633;
+      --text: #d7e1e8;
+      --muted: #8093a2;
+      --cyan: #27d3e6;
+      --amber: #f2aa3b;
+      --green: #3fd49a;
+      --red: #f1686d;
+      --blue: #72a7ff;
+      --mono: "SFMono-Regular", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--ink); color: var(--text); }
+    body { font: 12px/1.45 var(--sans); }
+    button { font: inherit; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: 46px 1fr 24px; }
+    .rail {
+      grid-row: 1 / 4; border-right: 1px solid var(--line); background: #070c11;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .mark {
+      width: 100%; height: 46px; display: grid; place-items: center; color: var(--cyan);
+      border-bottom: 1px solid var(--line); font: 700 14px var(--mono); letter-spacing: -.06em;
+    }
+    .rail nav { width: 100%; padding-top: 10px; }
+    .nav {
+      width: 100%; height: 54px; border: 0; border-left: 2px solid transparent;
+      color: var(--muted); background: transparent; display: grid; place-items: center;
+      font: 8px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    }
+    .nav b { color: var(--cyan); font-size: 14px; font-weight: 500; }
+    .nav.active { color: var(--cyan); background: rgba(39, 211, 230, .08); border-left-color: var(--cyan); }
+    .topbar {
+      grid-column: 2; border-bottom: 1px solid var(--line); background: var(--base);
+      padding: 0 12px; display: flex; align-items: center; gap: 12px;
+    }
+    .crumb { flex: 1; min-width: 0; font: 10px var(--mono); color: var(--muted); }
+    .crumb strong { color: var(--text); font-weight: 500; }
+    .badge {
+      border: 1px solid var(--line); padding: 3px 7px; white-space: nowrap;
+      font: 9px var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    }
+    .badge.live { color: var(--green); border-color: rgba(63, 212, 154, .5); }
+    .badge.degraded { color: var(--amber); border-color: rgba(242, 170, 59, .5); }
+    .badge.error { color: var(--red); border-color: rgba(241, 104, 109, .5); }
+    .refresh {
+      height: 28px; border: 1px solid var(--cyan); background: rgba(39, 211, 230, .08);
+      color: var(--cyan); padding: 0 10px; cursor: pointer; font: 9px var(--mono);
+      text-transform: uppercase; letter-spacing: .07em;
+    }
+    .refresh:disabled { opacity: .45; cursor: wait; }
+    main {
+      grid-column: 2; min-width: 0; padding: 6px;
+      background:
+        linear-gradient(rgba(37, 55, 71, .06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37, 55, 71, .05) 1px, transparent 1px), var(--ink);
+      background-size: 28px 28px;
+    }
+    .strip {
+      display: grid; grid-template-columns: minmax(250px, 1.4fr) repeat(5, minmax(112px, 1fr));
+      border: 1px solid var(--line); background: rgba(8, 14, 20, .96); margin-bottom: 6px;
+    }
+    .instrument, .metric { min-height: 74px; padding: 10px 12px; border-right: 1px solid var(--line); }
+    .instrument { display: flex; align-items: center; gap: 12px; }
+    .btc {
+      width: 34px; height: 34px; border: 1px solid var(--amber); color: var(--amber);
+      display: grid; place-items: center; font: 17px var(--mono);
+    }
+    h1 { margin: 0; font: 500 15px var(--mono); letter-spacing: .04em; }
+    .sub { margin-top: 3px; color: var(--muted); font: 9px var(--mono); text-transform: uppercase; }
+    .metric { display: flex; flex-direction: column; justify-content: center; }
+    .label, .panel-title {
+      color: var(--muted); font: 8px var(--mono); letter-spacing: .09em; text-transform: uppercase;
+    }
+    .value { margin-top: 5px; font: 500 15px var(--mono); font-variant-numeric: tabular-nums; }
+    .minor { margin-top: 2px; color: var(--muted); font: 8px var(--mono); }
+    .positive { color: var(--green) !important; }
+    .negative { color: var(--red) !important; }
+    .attention { color: var(--amber) !important; }
+    .accent { color: var(--cyan) !important; }
+    .info {
+      border: 1px solid rgba(114, 167, 255, .35); background: rgba(114, 167, 255, .055);
+      margin-bottom: 6px; padding: 8px 11px; display: flex; gap: 16px; align-items: center;
+      font: 9px var(--mono); color: var(--muted);
+    }
+    .info strong { color: var(--blue); white-space: nowrap; }
+    .grid { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(310px, 1fr); gap: 6px; align-items: start; }
+    .stack { display: grid; gap: 6px; min-width: 0; }
+    .panel { min-width: 0; border: 1px solid var(--line); background: rgba(8, 14, 20, .97); }
+    .panel-head {
+      height: 36px; border-bottom: 1px solid var(--line); background: rgba(16, 27, 37, .72);
+      padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .panel-head strong { color: var(--text); font-weight: 500; }
+    .panel-meta { color: var(--muted); font: 8px var(--mono); text-transform: uppercase; }
+    .chart-head {
+      min-height: 48px; padding: 7px 11px; border-bottom: 1px solid var(--soft);
+      display: flex; align-items: center; gap: 24px; font-family: var(--mono);
+    }
+    .last-price { font-size: 21px; }
+    .chart-stat { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+    .chart-stat b { display: block; color: var(--text); margin-top: 2px; font-size: 10px; font-weight: 500; }
+    .chart { height: 255px; padding: 8px; position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .empty {
+      position: absolute; inset: 0; display: none; place-items: center; color: var(--muted);
+      font: 10px var(--mono); text-align: center; padding: 20px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font: 9px var(--mono); font-variant-numeric: tabular-nums; }
+    th {
+      height: 27px; padding: 0 8px; color: var(--muted); background: #091018;
+      border-bottom: 1px solid var(--line); font-size: 8px; font-weight: 400;
+      text-align: left; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+    }
+    td { height: 32px; padding: 0 8px; border-bottom: 1px solid var(--soft); white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: rgba(39, 211, 230, .05); }
+    .num { text-align: right; }
+    .horizon { color: var(--cyan); font-weight: 600; }
+    .range { color: var(--muted); }
+    .status-tag {
+      display: inline-block; padding: 2px 5px; color: var(--amber);
+      border: 1px solid rgba(242, 170, 59, .35); font-size: 7px;
+    }
+    .regime { padding: 12px; }
+    .regime-name { margin: 5px 0 13px; color: var(--amber); font: 500 17px var(--mono); }
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; font: 9px var(--mono); }
+    .kv span:nth-child(odd) { color: var(--muted); text-transform: uppercase; }
+    .lineage { padding: 10px; display: grid; gap: 8px; }
+    .source {
+      border-left: 2px solid var(--cyan); background: rgba(39, 211, 230, .04);
+      padding: 7px 8px; font: 9px var(--mono);
+    }
+    .source strong { display: block; color: var(--text); font-weight: 500; }
+    .source small { color: var(--muted); }
+    .market-card { padding: 9px 10px; border-bottom: 1px solid var(--soft); font-family: var(--mono); }
+    .market-card:last-child { border-bottom: 0; }
+    .market-q { color: var(--text); font-size: 9px; line-height: 1.4; }
+    .market-stats { margin-top: 6px; display: flex; gap: 12px; color: var(--muted); font-size: 8px; }
+    .prob { color: var(--amber); font-size: 11px; }
+    .tracking { padding: 11px; color: var(--muted); font: 9px var(--mono); }
+    .tracking strong { display: block; color: var(--amber); margin-bottom: 5px; font-weight: 500; }
+    .error-panel {
+      display: none; border: 1px solid rgba(241, 104, 109, .55); background: rgba(241, 104, 109, .07);
+      color: var(--red); padding: 14px; margin-bottom: 6px; font: 10px var(--mono);
+    }
+    footer {
+      grid-column: 2; border-top: 1px solid var(--line); background: var(--base);
+      padding: 0 9px; display: flex; align-items: center; justify-content: space-between;
+      color: var(--muted); font: 8px var(--mono); text-transform: uppercase;
+    }
+    @media (max-width: 1050px) {
+      .strip { grid-template-columns: repeat(3, 1fr); }
+      .instrument { grid-column: span 3; }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .shell { grid-template-columns: 1fr; grid-template-rows: 46px 1fr 24px; }
+      .rail { display: none; }
+      .topbar, main, footer { grid-column: 1; }
+      .strip { grid-template-columns: repeat(2, 1fr); }
+      .instrument { grid-column: span 2; }
+      .info { align-items: flex-start; flex-direction: column; gap: 4px; }
+      .panel-meta, .badge.paper { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="Workspace navigation">
+      <div class="mark">A//</div>
+      <nav>
+        <button class="nav active"><b>⌁</b>BTC</button>
+        <button class="nav"><b>Δ</b>Models</button>
+        <button class="nav"><b>◎</b>Scores</button>
+        <button class="nav"><b>≋</b>Data</button>
+      </nav>
+    </aside>
+
+    <header class="topbar">
+      <div class="crumb">CRYPTO ALPHA / <strong>BTC INTELLIGENCE WORKSTATION</strong></div>
+      <span id="feed-badge" class="badge degraded">CONNECTING</span>
+      <span class="badge paper attention">PAPER RESEARCH ONLY</span>
+      <button id="refresh" class="refresh">Refresh live</button>
+    </header>
+
+    <main>
+      <div id="error-panel" class="error-panel"></div>
+
+      <section class="strip" aria-label="Live market overview">
+        <div class="instrument">
+          <div class="btc">₿</div>
+          <div><h1>BTC / USD</h1><div class="sub">Primary: Kraken · Cross-check: Coinbase</div></div>
+        </div>
+        <div class="metric"><span class="label">Observed spot</span><span id="price" class="value">—</span><span id="observed" class="minor">AWAITING FEED</span></div>
+        <div class="metric"><span class="label">UTC day change</span><span id="day-change" class="value">—</span><span id="day-range" class="minor">—</span></div>
+        <div class="metric"><span class="label">Bid / ask</span><span id="bid-ask" class="value">—</span><span id="spread" class="minor">—</span></div>
+        <div class="metric"><span class="label">Feed quality</span><span id="quality" class="value">—</span><span id="venue-gap" class="minor">—</span></div>
+        <div class="metric"><span class="label">Regime</span><span id="regime-top" class="value">—</span><span class="minor">DESCRIPTIVE · NOT A TRADE SIGNAL</span></div>
+      </section>
+
+      <div class="info">
+        <strong>WHAT YOU ARE READING</strong>
+        <span>Observed price is a live exchange quote. Forecasts are model estimates with empirical ranges. “Validation” is chronological historical holdout performance; it is not yet a live track record. No synthetic fallback is permitted.</span>
+      </div>
+
+      <div class="grid">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><strong>BTC/USD</strong> · COMPLETED 15M CANDLES</span>
+              <span id="chart-source" class="panel-meta">SOURCE PENDING</span>
+            </div>
+            <div class="chart-head">
+              <span id="chart-price" class="last-price">—</span>
+              <span class="chart-stat">WINDOW<b id="chart-window">—</b></span>
+              <span class="chart-stat">LOW / HIGH<b id="chart-range">—</b></span>
+              <span class="chart-stat">MODEL<b id="model-version">—</b></span>
+            </div>
+            <div class="chart">
+              <canvas id="price-chart"></canvas>
+              <div id="chart-empty" class="empty">LIVE MARKET SERIES UNAVAILABLE</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><strong>Multi-horizon forecasts</strong> · PROBABILISTIC RESEARCH OUTPUT</span>
+              <span class="panel-meta">BASE + EMPIRICAL 80% RESIDUAL RANGE</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Horizon</th><th>Target UTC</th><th class="num">Base price</th><th class="num">Expected move</th><th class="num">Low / high</th><th class="num">Hist. dir.</th><th class="num">Hist. MdAPE</th><th>Status</th></tr></thead>
+                <tbody id="forecast-body"><tr><td colspan="8">Loading completed candles and fitting models…</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><strong>Validation ledger</strong> · HORIZON SCORECARD</span>
+              <span class="panel-meta">CHRONOLOGICAL HOLDOUT · NO SHUFFLE</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Horizon</th><th class="num">Samples</th><th class="num">Direction accuracy</th><th class="num">Median abs. price error</th><th class="num">Mean abs. return error</th><th class="num">80% range coverage</th></tr></thead>
+                <tbody id="score-body"><tr><td colspan="6">Awaiting model validation…</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><strong>Live prediction ledger</strong> · NEON PERSISTENCE</span>
+              <span id="ledger-meta" class="panel-meta">CONNECTING</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Issued UTC</th><th>Horizon</th><th class="num">Anchor</th><th class="num">Prediction</th><th class="num">Actual</th><th class="num">Abs. error</th><th class="num">Direction</th><th>Status</th></tr></thead>
+                <tbody id="ledger-body"><tr><td colspan="8">Awaiting durable forecast records…</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <aside class="stack">
+          <section class="panel">
+            <div class="panel-head"><span class="panel-title"><strong>Regime inspector</strong></span><span class="panel-meta">15M PRICE-ONLY</span></div>
+            <div class="regime">
+              <div class="label">Current classification</div>
+              <div id="regime-name" class="regime-name">—</div>
+              <div class="kv">
+                <span>20-bar momentum</span><span id="momentum">—</span>
+                <span>Fast / slow spread</span><span id="trend-spread">—</span>
+                <span>Annualized volatility</span><span id="volatility">—</span>
+                <span>Method</span><span>RULE-BASED</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><span class="panel-title"><strong>Prediction-market context</strong></span><span id="pm-status" class="panel-meta">CONNECTING</span></div>
+            <div id="market-list"><div class="tracking">Loading active BTC markets…</div></div>
+            <div class="tracking">
+              <strong id="pm-score">DIRECTIONAL CONTEXT: —</strong>
+              Public probabilities are displayed, but model weight is 0 until timestamped history is validated. This prevents an untested sentiment input from masquerading as alpha.
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><span class="panel-title"><strong>Data lineage</strong></span><span class="panel-meta">FAIL CLOSED</span></div>
+            <div class="lineage">
+              <div class="source"><strong id="primary-source">KRAKEN · BTC/USD</strong><small id="primary-time">Awaiting quote</small></div>
+              <div class="source"><strong id="check-source">COINBASE · BTC-USD</strong><small id="check-time">Awaiting cross-check</small></div>
+              <div class="source"><strong>NO SYNTHETIC FALLBACK</strong><small>Unavailable or suspect feeds stop the dashboard instead of fabricating observations.</small></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><span class="panel-title"><strong>Live forecast tracking</strong></span><span class="panel-meta">PERSISTENCE</span></div>
+            <div class="tracking">
+              <strong id="tracking-status">CONNECTING TO NEON</strong>
+              <span id="tracking-note">Checking durable issuance and settlement state.</span>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <span>BTC ALPHA · OBSERVATION ≠ FORECAST ≠ EXECUTION</span>
+      <span id="footer-time">LAST REFRESH —</span>
+    </footer>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let state = null;
+
+    const money = (value) => value == null ? "—" : new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "USD", maximumFractionDigits: value >= 1000 ? 0 : 2
+    }).format(value);
+    const pct = (value, digits = 2) => value == null ? "—" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
+    const plainPct = (value, digits = 1) => value == null ? "—" : `${(value * 100).toFixed(digits)}%`;
+    const compact = (value) => value == null ? "—" : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+    const utc = (value) => value ? new Date(value).toLocaleString("en-US", {
+      timeZone: "UTC", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }) + " UTC" : "—";
+
+    function setDirection(element, value) {
+      element.classList.remove("positive", "negative");
+      if (value > 0) element.classList.add("positive");
+      if (value < 0) element.classList.add("negative");
+    }
+
+    function renderChart(series) {
+      const canvas = $("price-chart");
+      const empty = $("chart-empty");
+      if (!series || series.length < 2) {
+        empty.style.display = "grid";
+        return;
+      }
+      empty.style.display = "none";
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      const width = rect.width;
+      const height = rect.height;
+      const pad = { left: 9, right: 64, top: 8, bottom: 20 };
+      const values = series.map((row) => Number(row.close));
+      const low = Math.min(...values);
+      const high = Math.max(...values);
+      const spread = Math.max(high - low, high * .002);
+      const min = low - spread * .08;
+      const max = high + spread * .08;
+      const x = (index) => pad.left + index / (values.length - 1) * (width - pad.left - pad.right);
+      const y = (value) => pad.top + (max - value) / (max - min) * (height - pad.top - pad.bottom);
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = "#172633";
+      ctx.fillStyle = "#8093a2";
+      ctx.font = "8px SFMono-Regular, monospace";
+      for (let line = 0; line <= 4; line++) {
+        const yy = pad.top + line / 4 * (height - pad.top - pad.bottom);
+        ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke();
+        const label = max - line / 4 * (max - min);
+        ctx.fillText(money(label), width - pad.right + 6, yy + 3);
+      }
+      const gradient = ctx.createLinearGradient(0, pad.top, 0, height - pad.bottom);
+      gradient.addColorStop(0, "rgba(39,211,230,.18)");
+      gradient.addColorStop(1, "rgba(39,211,230,0)");
+      ctx.beginPath();
+      values.forEach((value, index) => index ? ctx.lineTo(x(index), y(value)) : ctx.moveTo(x(index), y(value)));
+      ctx.lineTo(x(values.length - 1), height - pad.bottom);
+      ctx.lineTo(x(0), height - pad.bottom);
+      ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
+      ctx.beginPath();
+      values.forEach((value, index) => index ? ctx.lineTo(x(index), y(value)) : ctx.moveTo(x(index), y(value)));
+      ctx.strokeStyle = "#27d3e6"; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = "#8093a2";
+      ctx.fillText(utc(series[0].timestamp).replace(" UTC", ""), pad.left, height - 4);
+      const endLabel = utc(series[series.length - 1].timestamp).replace(" UTC", "");
+      const endWidth = ctx.measureText(endLabel).width;
+      ctx.fillText(endLabel, width - pad.right - endWidth, height - 4);
+      $("chart-window").textContent = `${series.length} × 15M`;
+      $("chart-range").textContent = `${money(low)} / ${money(high)}`;
+    }
+
+    function render(data) {
+      state = data;
+      const market = data.market;
+      const change = market.price / market.day_open - 1;
+      $("price").textContent = money(market.price);
+      $("chart-price").textContent = money(market.price);
+      $("observed").textContent = `OBSERVED ${utc(market.observed_at)}`;
+      $("day-change").textContent = pct(change);
+      setDirection($("day-change"), change);
+      $("day-range").textContent = `${money(market.day_low)} — ${money(market.day_high)}`;
+      $("bid-ask").textContent = `${money(market.bid)} / ${money(market.ask)}`;
+      $("spread").textContent = `${market.spread_bps.toFixed(2)} BPS SPREAD`;
+      $("quality").textContent = market.quality.status;
+      $("quality").className = `value ${market.quality.status === "VERIFIED" ? "positive" : "attention"}`;
+      const gap = market.quality.cross_venue_deviation_bps;
+      $("venue-gap").textContent = gap == null ? "CROSS-CHECK UNAVAILABLE" : `${gap.toFixed(2)} BPS VENUE GAP`;
+      $("feed-badge").textContent = market.quality.status === "VERIFIED" ? "LIVE VERIFIED" : "LIVE DEGRADED";
+      $("feed-badge").className = `badge ${market.quality.status === "VERIFIED" ? "live" : "degraded"}`;
+      $("chart-source").textContent = `KRAKEN · ${utc(data.series.at(-1)?.timestamp)}`;
+      $("model-version").textContent = data.model.version;
+
+      const regime = data.regime;
+      $("regime-top").textContent = regime.name;
+      $("regime-name").textContent = regime.name;
+      $("momentum").textContent = pct(regime.momentum_20_bars);
+      setDirection($("momentum"), regime.momentum_20_bars);
+      $("trend-spread").textContent = pct(regime.fast_slow_spread);
+      setDirection($("trend-spread"), regime.fast_slow_spread);
+      $("volatility").textContent = plainPct(regime.annualized_volatility);
+
+      $("forecast-body").innerHTML = data.forecasts.map((forecast) => `
+        <tr>
+          <td class="horizon">${forecast.label}</td>
+          <td>${utc(forecast.target_at)}</td>
+          <td class="num">${money(forecast.predicted_price)}</td>
+          <td class="num ${forecast.predicted_return >= 0 ? "positive" : "negative"}">${pct(forecast.predicted_return)}</td>
+          <td class="num range">${money(forecast.low_price)} / ${money(forecast.high_price)}</td>
+          <td class="num">${plainPct(forecast.validation.direction_accuracy)}</td>
+          <td class="num">${plainPct(forecast.validation.median_absolute_pct_error)}</td>
+          <td><span class="status-tag">RESEARCH</span></td>
+        </tr>`).join("");
+      $("score-body").innerHTML = data.forecasts.map((forecast) => `
+        <tr>
+          <td class="horizon">${forecast.label}</td>
+          <td class="num">${forecast.validation.samples}</td>
+          <td class="num">${plainPct(forecast.validation.direction_accuracy)}</td>
+          <td class="num">${plainPct(forecast.validation.median_absolute_pct_error, 2)}</td>
+          <td class="num">${plainPct(forecast.validation.mean_absolute_return_error, 2)}</td>
+          <td class="num">${plainPct(forecast.validation.interval_coverage)}</td>
+        </tr>`).join("");
+
+      const pm = data.prediction_markets;
+      $("pm-status").textContent = pm.status;
+      $("pm-score").textContent = pm.directional_score == null
+        ? "DIRECTIONAL CONTEXT: INSUFFICIENT"
+        : `DIRECTIONAL CONTEXT: ${pm.directional_score >= 0 ? "UPSIDE" : "DOWNSIDE"} ${(Math.abs(pm.directional_score) * 100).toFixed(0)}/100`;
+      $("market-list").innerHTML = pm.markets.length ? pm.markets.map((item) => `
+        <div class="market-card">
+          <div class="market-q">${item.question}</div>
+          <div class="market-stats"><span class="prob">YES ${(item.yes_probability * 100).toFixed(1)}%</span><span>LIQ ${compact(item.liquidity_usd)}</span><span>EXP ${utc(item.expiry)}</span></div>
+        </div>`).join("") : `<div class="tracking">No active matching BTC markets were returned.</div>`;
+
+      const primary = market.sources.primary;
+      const check = market.sources.cross_check;
+      $("primary-time").textContent = `${money(primary.price)} · OBSERVED ${utc(primary.observed_at)}`;
+      $("check-time").textContent = check.price == null ? "Cross-check unavailable" : `${money(check.price)} · SOURCE ${utc(check.source_timestamp)}`;
+      $("tracking-status").textContent = data.tracking.status.replaceAll("_", " ");
+      $("tracking-note").textContent = data.tracking.status === "LIVE"
+        ? `${data.tracking.open_predictions} open · ${data.tracking.settled_predictions} settled · ${data.tracking.settled_now} settled this refresh. Challenger promotion still requires manual approval.`
+        : `Persistence is degraded (${data.tracking.error_type || data.tracking.status}). Forecast display remains read-only.`;
+      $("ledger-meta").textContent = data.tracking.status === "LIVE"
+        ? `${data.tracking.open_predictions} OPEN · ${data.tracking.settled_predictions} SETTLED`
+        : data.tracking.status;
+      const recent = data.tracking.recent || [];
+      $("ledger-body").innerHTML = recent.length ? recent.map((item) => `
+        <tr>
+          <td>${utc(item.issued_at)}</td>
+          <td class="horizon">${item.horizon.toUpperCase()}</td>
+          <td class="num">${money(item.anchor_price)}</td>
+          <td class="num">${money(item.predicted_price)}</td>
+          <td class="num">${money(item.actual_price)}</td>
+          <td class="num">${item.absolute_percentage_error == null ? "—" : plainPct(item.absolute_percentage_error, 2)}</td>
+          <td class="num ${item.direction_correct === true ? "positive" : item.direction_correct === false ? "negative" : ""}">${item.direction_correct == null ? "—" : item.direction_correct ? "HIT" : "MISS"}</td>
+          <td><span class="status-tag">${item.status}</span></td>
+        </tr>`).join("") : `<tr><td colspan="8">No persisted predictions yet.</td></tr>`;
+      $("footer-time").textContent = `LAST REFRESH ${utc(data.generated_at)}`;
+      renderChart(data.series);
+    }
+
+    async function load(force = false) {
+      const button = $("refresh");
+      button.disabled = true;
+      button.textContent = force ? "Recomputing…" : "Loading…";
+      $("error-panel").style.display = "none";
+      try {
+        const response = force
+          ? await fetch("/api/research/run", { method: "POST", cache: "no-store" })
+          : await fetch("/api/research/terminal?periods=240", { cache: "no-store" });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${response.status}`);
+        }
+        render(await response.json());
+      } catch (error) {
+        $("feed-badge").textContent = "DATA UNAVAILABLE";
+        $("feed-badge").className = "badge error";
+        $("error-panel").textContent = `LIVE DATA STOPPED: ${error.message}. No synthetic price has been substituted.`;
+        $("error-panel").style.display = "block";
+        $("chart-empty").style.display = "grid";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Refresh live";
+      }
+    }
+
+    $("refresh").addEventListener("click", () => load(true));
+    window.addEventListener("resize", () => state && renderChart(state.series));
+    load();
+    setInterval(() => load(false), 60_000);
+  </script>
+</body>
+</html>

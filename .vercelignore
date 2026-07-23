@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+.coverage*
+.pytest_cache
+.mypy_cache
+.ruff_cache
+artifacts
+dashboard_content.py
+data
+tests
+work

@@ -1,0 +1,22 @@
+# Documentation-only sample. Runtime secrets belong in environment variables.
+connectors:
+  spot:
+    kind: binance_public
+    symbol: BTCUSDT
+    interval: 1d
+  derivatives:
+    kind: binance_public
+  prediction_markets:
+    kind: polymarket_gamma_public
+    query: bitcoin
+  etf_flows:
+    kind: point_in_time_csv
+    path: data/imports/etf_flows.csv
+  options:
+    kind: point_in_time_csv
+    path: data/imports/options.csv
+  onchain:
+    kind: point_in_time_csv
+    path: data/imports/onchain.csv
+# Every CSV must contain timestamp and available_at. Features are joined on
+# available_at, never on the economic observation date alone.

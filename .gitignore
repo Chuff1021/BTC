@@ -1,0 +1,17 @@
+.env
+.env*.local
+.venv/
+/alpha_engine/
+/dashboard_content.py
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+data/
+artifacts/
+*.duckdb
+.DS_Store
+.vercel

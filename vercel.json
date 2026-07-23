@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "functions": {
+    "**/*.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,.venv/**,data/**,artifacts/**,work/**}"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/forecasts",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

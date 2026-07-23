@@ -1,0 +1,23 @@
+services:
+  alpha:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CAE_DATABASE_PATH: /app/data/alpha.duckdb
+      CAE_PARQUET_ROOT: /app/data/parquet
+      CAE_ARTIFACT_ROOT: /app/artifacts
+    ports:
+      - "8000:8000"
+    volumes:
+      - alpha-data:/app/data
+      - alpha-artifacts:/app/artifacts
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  alpha-data:
+  alpha-artifacts:
+
