@@ -15,12 +15,21 @@ The Vercel adapter is BTC-only and never substitutes synthetic observations:
 
 - Kraken BTC/USD is the primary live spot and OHLCV source.
 - Coinbase Exchange BTC-USD is a quote-level cross-check.
+- Kraken Futures supplies BTC perpetual funding, open interest, basis, liquidations, and
+  long/short positioning.
+- Deribit supplies a public BTC options snapshot (near-ATM mark IV, option volume, and
+  put/call open-interest ratio).
+- DefiLlama supplies aggregate stablecoin supply, mempool.space supplies Bitcoin network
+  fee pressure, Alternative.me supplies its attributed BTC Fear & Greed index, and public
+  daily market charts supply the US 10Y, dollar index, Nasdaq, gold, and VIX.
 - A cross-venue deviation above 75 basis points stops the response.
 - Kraken's uncommitted final OHLC candle is excluded.
 - Polymarket's public Gamma API supplies active BTC prediction-market context.
 - Neon Postgres stores issued forecasts and realized outcomes across deployments.
 - A protected Vercel Cron route issues and settles forecasts every 15 minutes.
 - If a required market feed is unavailable, the UI says `DATA UNAVAILABLE`.
+- ETF flows, exchange reserves/miner flows, wallet clusters, and information velocity are
+  labeled `PROVIDER_REQUIRED` until licensed point-in-time feeds are configured.
 
 Eight fixed research horizons are produced from completed candles:
 
@@ -38,7 +47,10 @@ Eight fixed research horizons are produced from completed candles:
 The baseline is a fixed regularized linear model using causal OHLCV momentum, volatility,
 trend, range, and volume features. Each horizon is trained separately. The UI reports a
 base price, empirical 80% residual range, chronological holdout sample count, direction
-accuracy, median absolute price error, mean absolute return error, and range coverage.
+accuracy, expanding-window walk-forward accuracy, cost-aware baseline comparison, median
+absolute price error, mean absolute return error, and range coverage. Each forecast also
+publishes ranked feature contributions, a source-to-output decision trace, embargoed
+historical analog states, and fixed-threshold hypothesis results.
 These are historical validation statistics—not a live trading track record or guarantee.
 
 Prediction-market probabilities are visible as public context. Their model weight remains
@@ -52,6 +64,7 @@ Read-only endpoints:
 GET  /api/market/live
 GET  /api/forecast/live
 GET  /api/prediction-markets
+GET  /api/intelligence/live
 GET  /api/tracking
 GET  /api/research/terminal
 GET  /api/cron/forecasts   # Vercel Cron only; requires CRON_SECRET

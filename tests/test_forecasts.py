@@ -48,6 +48,19 @@ def test_all_requested_horizons_are_forecast_without_future_rows() -> None:
         forecast["latest_completed_candle"] < forecast["issued_at"] for forecast in forecasts
     )
     assert all(forecast["validation"]["samples"] >= 100 for forecast in forecasts)
+    assert all(
+        len(forecast["explanation"]["feature_contributions"]) == 13 for forecast in forecasts
+    )
+    assert all(forecast["analogs"] for forecast in forecasts)
+    assert all(forecast["hypotheses"] for forecast in forecasts)
+    assert all(forecast["validation"]["walk_forward"]["folds"] == 4 for forecast in forecasts)
+    assert all(
+        forecast["validation"]["baseline_backtest"][
+            "assumed_fee_plus_slippage_bps_per_position_change"
+        ]
+        == 10.0
+        for forecast in forecasts
+    )
 
 
 def test_forecast_ledger_is_idempotent_and_scores_due_predictions(tmp_path: Path) -> None:

@@ -19,11 +19,13 @@ from fastapi.responses import HTMLResponse
 
 from forecast_core import HORIZONS, MODEL_VERSION, build_forecasts, classify_regime
 from forecast_store import read_tracking, record_settle_and_score
+from intelligence import build_intelligence, data_catalog
 
 KRAKEN_BASE = "https://api.kraken.com/0/public"
 COINBASE_TICKER = "https://api.exchange.coinbase.com/products/BTC-USD/ticker"
 POLYMARKET_SEARCH = "https://gamma-api.polymarket.com/public-search"
 CACHE_SECONDS = 60
+INTELLIGENCE_CACHE_SECONDS = 900
 MAX_CROSS_VENUE_DEVIATION_BPS = 75.0
 
 app = FastAPI(
@@ -68,9 +70,9 @@ async def _kraken_json(
     raise KrakenRateLimitError("Kraken public market-data quota is temporarily exhausted")
 
 
-def _cached(key: str) -> Any | None:
+def _cached(key: str, ttl_seconds: int = CACHE_SECONDS) -> Any | None:
     item = _cache.get(key)
-    if item and time.monotonic() - item[0] <= CACHE_SECONDS:
+    if item and time.monotonic() - item[0] <= ttl_seconds:
         return item[1]
     return None
 
@@ -332,6 +334,17 @@ async def _prediction_markets(current_price: float) -> dict[str, Any]:
     return _set_cache("prediction_markets", result)
 
 
+async def _intelligence_data(market: dict[str, Any]) -> dict[str, Any]:
+    cached = _cached("intelligence", INTELLIGENCE_CACHE_SECONDS)
+    if cached is not None:
+        return cached
+    result = await build_intelligence(
+        spot_price=float(market["price"]),
+        coinbase_price=market["sources"]["cross_check"]["price"],
+    )
+    return _set_cache("intelligence", result)
+
+
 def _public_market(bundle: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in bundle.items() if key != "candles_by_interval"}
 
@@ -349,7 +362,12 @@ async def _terminal(periods: int) -> dict[str, Any]:
         anchor_price=float(latest_completed["close"]),
     )
     prediction_task = _prediction_markets(float(market["price"]))
-    forecasts, prediction_markets = await asyncio.gather(forecasts_task, prediction_task)
+    intelligence_task = _intelligence_data(market)
+    forecasts, prediction_markets, intelligence = await asyncio.gather(
+        forecasts_task,
+        prediction_task,
+        intelligence_task,
+    )
     try:
         tracking = await asyncio.to_thread(
             record_settle_and_score,
@@ -378,12 +396,72 @@ async def _terminal(periods: int) -> dict[str, Any]:
         "regime": classify_regime(market["candles_by_interval"][15]),
         "forecasts": forecasts,
         "prediction_markets": prediction_markets,
+        "intelligence": intelligence,
+        "data_catalog": data_catalog(
+            intelligence,
+            prediction_market_status=prediction_markets["status"],
+        ),
         "tracking": tracking,
         "model": {
             "version": MODEL_VERSION,
             "input_status": "LIVE_KRAKEN_OHLCV",
             "prediction_market_weight": prediction_markets["model_weight"],
             "promotion_policy": "manual review only",
+            "active_inputs": [
+                "completed OHLCV momentum",
+                "realized volatility",
+                "trend distance",
+                "intrabar range",
+                "volume impulse",
+            ],
+            "shadow_inputs": [
+                "funding",
+                "open interest",
+                "basis",
+                "options",
+                "stablecoin supply",
+                "macro assets",
+                "sentiment",
+                "prediction markets",
+            ],
+            "shadow_policy": (
+                "Visible for research, but weight is zero until timestamped history "
+                "passes walk-forward validation."
+            ),
+        },
+        "research_controls": {
+            "forecast_method": "fixed ridge regression",
+            "time_series_validation": "chronological holdout + expanding-window walk-forward",
+            "leakage_safeguards": [
+                "Only completed candles are eligible",
+                "Chronological splits; random shuffle disabled",
+                "Feature normalization fitted on training rows only",
+                "Historical analogs embargo the most recent overlapping outcomes",
+                "External snapshot feeds remain zero-weight until timestamped history exists",
+            ],
+            "cost_model": {
+                "fee_plus_slippage_bps_per_position_change": 10.0,
+                "stress_case_bps": 20.0,
+                "applies_to": "illustrative long/cash holdout baseline",
+            },
+            "risk_controls": [
+                "Paper research only",
+                "No order-placement endpoint",
+                "No leverage",
+                "No withdrawal credentials",
+                "Manual model promotion",
+                "Fail closed on suspect spot data",
+            ],
+            "experiment_tracking": {
+                "forecast_ledger": "Neon Postgres",
+                "model_versioned": True,
+                "settlement": "15-minute scheduled reconciliation",
+                "auto_learning": False,
+                "note": (
+                    "Models are measured continuously; retraining and promotion "
+                    "require review."
+                ),
+            },
         },
         "series": series,
     }
@@ -421,6 +499,19 @@ async def forecast_live() -> dict[str, Any]:
 async def prediction_markets() -> dict[str, Any]:
     market = await _market_data()
     return await _prediction_markets(float(market["price"]))
+
+
+@app.get("/api/intelligence/live")
+async def intelligence_live() -> dict[str, Any]:
+    market = await _market_data()
+    intelligence = await _intelligence_data(market)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "instrument": "BTC/USD",
+        "domains": intelligence,
+        "catalog": data_catalog(intelligence, prediction_market_status="SEE_ENDPOINT"),
+        "paper_trading_only": True,
+    }
 
 
 @app.get("/api/research/terminal")
